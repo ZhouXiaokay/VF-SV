@@ -1,0 +1,147 @@
+import time
+
+import grpc
+import numpy as np
+import tenseal as ts
+
+import sys
+from transmission.tenseal_shapley import tenseal_allreduce_data_pb2_grpc, tenseal_allreduce_data_pb2
+from transmission.tenseal_shapley import tenseal_shapley_data_pb2_grpc, tenseal_shapley_data_pb2
+
+
+class ShapleyClient:
+
+    def __init__(self, server_address, args):
+        self.server_address = server_address
+        self.client_rank = args.rank
+        self.num_clients = args.world_size
+        self.ctx_file = args.config
+
+        context_bytes = open(self.ctx_file, "rb").read()
+        self.ctx = ts.context_from(context_bytes)
+
+        self.max_msg_size = 1000000000
+        self.options = [('grpc.max_send_message_length', self.max_msg_size),
+                        ('grpc.max_receive_message_length', self.max_msg_size)]
+        channel = grpc.insecure_channel(self.server_address, options=self.options)
+        self.stub = tenseal_shapley_data_pb2_grpc.MIServiceStub(channel)
+        self.comm_time_l = []
+
+    def __sum_enc_all_reduce(self, plain_vector):
+        # print(">>> client sum encrypted start")
+
+        # encrypt
+        encrypt_start = time.time()
+        enc_vector = ts.ckks_vector(self.ctx, plain_vector)
+        encrypt_time = time.time() - encrypt_start
+
+        # create request
+        request_start = time.time()
+        enc_vector_bytes = enc_vector.serialize()
+
+        # send size of msg{ sys.getsizeof(enc_vector_bytes)}
+
+        # print("size of msg: {} bytes".format(sys.getsizeof(enc_vector_bytes)))
+        request = tenseal_shapley_data_pb2.all_reduce_msg(
+            client_rank=self.client_rank,
+            msg=enc_vector_bytes
+        )
+        request_time = time.time() - request_start
+
+        # comm with server
+        comm_start = time.time()
+        # print("start comm with server, time = {}".format(time.asctime(time.localtime(time.time()))))
+        response = self.stub.sum_enc_all_reduce(request)
+        comm_time = time.time() - comm_start
+        self.comm_time_l.append(comm_time)
+
+        # deserialize summed enc vector from response
+        deserialize_start = time.time()
+        assert self.client_rank == response.client_rank
+        summed_enc_vector = ts.ckks_vector_from(self.ctx, response.msg)
+        deserialize_time = time.time() - deserialize_start
+
+        # received size of msg{ sys.getsizeof(response.msg)}
+
+        # decrypt vector
+        decrypt_start = time.time()
+        dec_vector = summed_enc_vector.decrypt()
+        # print("size of received vector: {}".format(len(dec_vector)))
+        decrypt_time = time.time() - decrypt_start
+
+        np_dec_vector = np.array(dec_vector)
+
+        # print(">>> client sum enc vector end, cost {:.2f} s: encryption {:.2f} s, create request {:.2f} s, "
+        #       "comm with server {:.2f} s, deserialize {:.2f} s, decrypt {:.2f} s"
+        #       .format(time.time() - encrypt_start, encrypt_time, request_time,
+        #               comm_time, deserialize_time, decrypt_time))
+
+        return np_dec_vector
+
+    def __sum_enc_batch(self, plain_vector, group_keys):
+        # print(">>> client sum encrypted start")
+
+        # encrypt
+        encrypt_start = time.time()
+        enc_vector = ts.ckks_vector(self.ctx, plain_vector)
+        encrypt_time = time.time() - encrypt_start
+
+        # create request
+        request_start = time.time()
+        enc_vector_bytes = enc_vector.serialize()
+
+        # send size of msg{ sys.getsizeof(enc_vector_bytes)}
+
+        # print("size of msg: {} bytes".format(sys.getsizeof(enc_vector_bytes)))
+        request = tenseal_shapley_data_pb2.batch_msg(
+            client_rank=self.client_rank,
+            group_keys=group_keys,
+            msg=enc_vector_bytes
+        )
+        request_time = time.time() - request_start
+
+        # comm with server
+        comm_start = time.time()
+        # print("start comm with server, time = {}".format(time.asctime(time.localtime(time.time()))))
+        response = self.stub.sum_enc_batch(request)
+        comm_time = time.time() - comm_start
+        self.comm_time_l.append(comm_time)
+
+        # deserialize summed enc vector from response
+        deserialize_start = time.time()
+        assert self.client_rank == response.client_rank
+        summed_enc_vector_list = [ts.ckks_vector_from(self.ctx, r) for r in response.res]
+
+        deserialize_time = time.time() - deserialize_start
+
+        # received size of msg{ sys.getsizeof(response.msg)}
+
+        # decrypt vector
+        decrypt_start = time.time()
+        dec_vector_list = [v.decrypt() for v in summed_enc_vector_list]
+        # dec_vector = summed_enc_vector.decrypt()
+        # print("size of received vector: {}".format(len(dec_vector)))
+        decrypt_time = time.time() - decrypt_start
+
+        np_dec_vector = np.array(dec_vector_list)
+
+        # print(">>> client sum enc vector end, cost {:.2f} s: encryption {:.2f} s, create request {:.2f} s, "
+        #       "comm with server {:.2f} s, deserialize {:.2f} s, decrypt {:.2f} s"
+        #       .format(time.time() - encrypt_start, encrypt_time, request_time,
+        #               comm_time, deserialize_time, decrypt_time))
+        return np_dec_vector
+
+    def return_comm_time(self):
+        return sum(self.comm_time_l)
+
+    def transmit(self, plain_vector, group_keys = [] ,operator="sum_all_reduce"):
+        trans_start = time.time()
+        response = None
+        if operator == "sum_all_reduce":
+            response = self.__sum_enc_all_reduce(plain_vector)
+        elif operator == "sum_batch":
+            response = self.__sum_enc_batch(plain_vector, group_keys)
+        # response = self.__sum_enc_all_reduce(plain_vector) if operator == "sum_all_reduce" else None
+        print(">>> client transmission cost {:.2f} s"
+              .format(time.time() - trans_start))
+        return response
