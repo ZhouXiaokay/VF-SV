@@ -1,5 +1,5 @@
 #!/bin/bash
-# This is a test script for the vf_mine example
+# This is a test script for the VF-PS example
 for i in 1 2
 do
   for dataset in "adult" "web" "phishing"
