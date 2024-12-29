@@ -108,7 +108,7 @@ def run(args):
         mi_values = []
 
         test_start = time.time()
-
+        dist.barrier()
         for i in range(n_test):
             dist.barrier()
             print(">>>>>> test[{}] <<<<<<".format(i))

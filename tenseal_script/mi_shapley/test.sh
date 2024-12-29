@@ -4,3 +4,4 @@ for i in {1..2}
 do
     python3 mi_all_reduce_shapley.py
 done
+
