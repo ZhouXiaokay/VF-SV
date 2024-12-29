@@ -110,6 +110,7 @@ def run(args):
         test_start = time.time()
 
         for i in range(n_test):
+            dist.barrier()
             print(">>>>>> test[{}] <<<<<<".format(i))
             one_test_start = time.time()
             cur_test_data = test_data[i]

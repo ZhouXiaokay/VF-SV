@@ -1,6 +1,6 @@
 import time
 import sys
-code_path = '/home/zxk/codes/VF-PS'
+code_path = '/home/zxk/codes/vfps_mi_diversity'
 sys.path.append(code_path)
 import math
 from conf import global_args_parser
@@ -104,6 +104,7 @@ def run(args):
     avg_dists = []
     client_mi_values = np.zeros(args.num_clients)
     for i in range(n_test):
+        dist.barrier()
         print(">>>>>> test[{}] <<<<<<".format(i))
         one_test_start = time.time()
         cur_test_data = test_data[i]
