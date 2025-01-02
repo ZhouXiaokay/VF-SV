@@ -17,6 +17,8 @@ from data_loader.load_data import (load_dummy_partition_with_label,choose_datase
 from tenseal_trainer.knn_mi.fagin_batch_avg_trainer import FaginBatchTrainer
 from utils.helpers import seed_torch, stochastic_greedy
 import logging
+import warnings
+warnings.filterwarnings('ignore')
 
 
 def dist_is_initialized():
@@ -50,7 +52,7 @@ def run(args):
     print("device = {}".format(device))
 
     logging.basicConfig(level=logging.DEBUG,
-                        filename=code_path + '/logs/VF-PS.log',
+                        filename=code_path + '/logs/VF-SV.log',
                         datefmt='%Y/%m/%d %H:%M:%S',
                         format='%(asctime)s - %(name)s - %(levelname)s - %(lineno)d - %(module)s - %(message)s')
     logger = logging.getLogger(__name__)
@@ -103,15 +105,23 @@ def run(args):
     true_targets = []
     avg_dists = []
     client_mi_values = np.zeros(args.num_clients)
+    test_start = time.time()
     for i in range(n_test):
         dist.barrier()
-        print(">>>>>> test[{}] <<<<<<".format(i))
+        if args.rank == 0:
+            print(">>>>>> test[{}] <<<<<<".format(i))
         one_test_start = time.time()
         cur_test_data = test_data[i]
         cur_test_target = test_targets[i]
         true_targets.append(cur_test_target)
         cur_mi_values = trainer.find_top_k(cur_test_data, cur_test_target, args.k, group_keys)
         client_mi_values += cur_mi_values
+        if i % 1000 == 0:
+            if args.rank == 0:
+                print("Per 1k time cost is: {}".format(time.time() - test_start))
+                logger.info("Per 1k time cost is: {}".format(time.time()-test_start))
+            test_start = time.time()
+        dist.barrier()
 
     client_group = [0]*args.world_size
     mi_sort_ind = np.argsort(client_mi_values)[::-1]

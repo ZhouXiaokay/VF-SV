@@ -1,5 +1,7 @@
 import time
 import sys
+code_path = '/home/zxk/codes/vfps_mi_diversity'
+sys.path.append(code_path)
 import math
 from conf import global_args_parser
 import numpy as np
@@ -17,7 +19,7 @@ from trainer.knn_mi_RP.mi_lsh_adaptive_sampling_fagin_batch_trainer import LSHAd
 from utils.helpers import seed_torch
 from typing import List, Union
 from utils.comm_op import np_all_gather
-
+import logging
 
 def dist_is_initialized():
     if dist.is_available():
@@ -67,12 +69,15 @@ def create_hash_table(projected_data, depth):
             hash_tables.setdefault(key, set()).add(i)
     return hash_tables
 
-def query_hash_table(query_data, hash_tables, depth):
+def query_hash_table(query_data, hash_tables, num_train ,depth):
     query_index = hash_func(query_data).ravel()
     candidates = set()
     for k in range(depth):
         key = query_index[k]
-        query_set = hash_tables[key]
+        if key not in hash_tables:
+            query_set = {i for i in range(num_train)}
+        else:
+            query_set = hash_tables[key]
         candidates.update(query_set)
     return list(candidates)
 
@@ -84,6 +89,13 @@ def hash_func(projected_data):
 def run(args):
     device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
     seed_torch()
+
+    logging.basicConfig(level=logging.DEBUG,
+                        filename=code_path + '/logs/VF-SV.log',
+                        datefmt='%Y/%m/%d %H:%M:%S',
+                        format='%(asctime)s - %(name)s - %(levelname)s - %(lineno)d - %(module)s - %(message)s')
+    logger = logging.getLogger(__name__)
+
     if args.rank == 0:
         print("device = {}".format(device))
 
@@ -96,16 +108,17 @@ def run(args):
     all_data = load_and_split_dataset(dataset)
     data = all_data[rank]
     targets = all_data['labels']
+    n_data = len(data)
 
     if args.rank == 0:
         print("load data part cost {} s".format(time.time() - load_start))
-    n_data = len(data)
-    if args.rank == 0:
         print("number of data = {}".format(n_data))
+
 
     data = random_projection(data, args.proj_size)
     num_data = len(data)
     n_test = int(num_data * args.test_ratio)
+    n_train = num_data - n_test
     # n_test = 10
     train_data = data[n_test:]
     train_targets = targets[n_test:]
@@ -142,7 +155,7 @@ def run(args):
         one_test_start = time.time()
         cur_test_data = test_data[i]
         cur_test_target = test_targets[i]
-        lsh_candidates = query_hash_table(all_test_data[i], hash_table,depth=1)
+        lsh_candidates = query_hash_table(all_test_data[i], hash_table, n_train ,depth=1)
         if rank == 0:
             print(len(lsh_candidates))
         cur_mi_values = trainer.find_top_k(cur_test_data, cur_test_target, args.k, lsh_candidates ,adaptive_keys)
@@ -154,7 +167,7 @@ def run(args):
                 var_key = np.var(mi_groups_dict[key])
                 if rank == 0:
                     print("key = {}, var = {}".format(key, var_key))
-                if var_key < 1e-4:
+                if var_key < args.var_tolerance:
                     adaptive_keys.remove(key)
                     if rank == 0:
                         print("remove group key = {}".format(key))

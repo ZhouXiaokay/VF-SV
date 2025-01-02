@@ -1,7 +1,7 @@
 import time
 from concurrent import futures
 import sys
-code_path = '/home/zxk/codes/VF-PS'
+code_path = '/home/zxk/codes/vfps_mi_diversity'
 sys.path.append(code_path)
 import numpy as np
 import grpc
@@ -22,7 +22,7 @@ class ShapleyServer(tenseal_shapley_data_pb2_grpc.MIServiceServicer):
         context_bytes = open(ctx_file, "rb").read()
         self.ctx = ts.context_from(context_bytes)
 
-        self.sleep_time = 0.01
+        self.sleep_time = 0.001
 
         # cache and counter for sum operation
         self.n_sum_round = 0
@@ -56,6 +56,7 @@ class ShapleyServer(tenseal_shapley_data_pb2_grpc.MIServiceServicer):
         self.sum_enc_vectors_list.append(enc_vector)
         self.n_sum_request += 1
         # wait until receiving of all clients' requests
+        print("Number of Sum Request: ", self.n_sum_request)
         wait_start = time.time()
         while self.n_sum_request % self.num_clients != 0:
             time.sleep(self.sleep_time)
@@ -65,6 +66,8 @@ class ShapleyServer(tenseal_shapley_data_pb2_grpc.MIServiceServicer):
             summed_enc_vector = sum(self.sum_enc_vectors_list)
             self.sum_data.append(summed_enc_vector)
             sum_time = time.time() - sum_start
+            self.n_sum_round = 0
+            print("Sum Time: ", sum_time)
             self.sum_completed = True
         sum_wait_start = time.time()
         while not self.sum_completed:
@@ -77,6 +80,7 @@ class ShapleyServer(tenseal_shapley_data_pb2_grpc.MIServiceServicer):
         )
         response_time = time.time() - response_start
         self.n_sum_response = self.n_sum_response + 1
+        print("Number of Sum Response: ", self.n_sum_response)
         while self.n_sum_response % self.num_clients != 0:
             time.sleep(self.sleep_time)
         if client_rank == 0:
@@ -84,6 +88,7 @@ class ShapleyServer(tenseal_shapley_data_pb2_grpc.MIServiceServicer):
         self.n_sum_round = self.n_sum_round + 1
         while self.n_sum_round % self.num_clients != 0:
             time.sleep(self.sleep_time)
+        print("Number of Sum Round: ", self.n_sum_round)
         print(">>> server finish sum_enc, cost {:.2f} s: deserialization {:.2f} s, "
               "wait for requests {:.2f} s, wait for sum {:.2f} s, create response {:.2f} s"
               .format(time.time() - server_start, deser_time,
@@ -114,6 +119,7 @@ class ShapleyServer(tenseal_shapley_data_pb2_grpc.MIServiceServicer):
             serialized_enc_vector = [vector.serialize() for vector in summed_enc_vector]
             self.sum_data.append(serialized_enc_vector)
             sum_time = time.time() - sum_start
+            self.n_sum_round = 0
             self.sum_completed = True
         sum_wait_start = time.time()
         while not self.sum_completed:
@@ -131,6 +137,7 @@ class ShapleyServer(tenseal_shapley_data_pb2_grpc.MIServiceServicer):
         if client_rank == 0:
             self.reset_sum()
         self.n_sum_round = self.n_sum_round + 1
+        print("Number of Sum Round: ", self.n_sum_round)
         while self.n_sum_round % self.num_clients != 0:
             time.sleep(self.sleep_time)
         print(">>> server finish sum_enc, cost {:.2f} s: deserialization {:.2f} s, "

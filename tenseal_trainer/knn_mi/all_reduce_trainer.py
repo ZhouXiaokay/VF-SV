@@ -6,7 +6,7 @@ import numpy as np
 from utils.distance import square_euclidean_np
 from utils.comm_op import sum_sqrt_all_reduce
 from transmission.tenseal_shapley.tenseal_shapley_client import ShapleyClient
-
+import torch.distributed as dist
 
 
 class AllReduceTrainer(object):
@@ -22,7 +22,9 @@ class AllReduceTrainer(object):
         self.client = ShapleyClient(self.server_addr, args)
 
     def transmit(self, vector):
+        dist.barrier()
         summed_vector = self.client.transmit(vector, operator='sum_all_reduce')
+        dist.barrier()
         # print(summed_vector)
         return summed_vector
 

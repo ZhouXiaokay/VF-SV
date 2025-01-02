@@ -48,7 +48,9 @@ class FaginBatchTrainer(object):
         return math.log(x, math.e) - 0.5 / x
 
     def transmit(self, vector, group_keys):
+        dist.barrier()
         summed_vector = self.client.transmit(vector,group_keys=group_keys,operator='sum_batch')
+        dist.barrier()
         # print(summed_vector)
         return summed_vector
 
@@ -138,7 +140,9 @@ class FaginBatchTrainer(object):
         candidate_local_dist = local_dist[candidate_ind]
 
         # for each group cal its global distance
+        dist.barrier()
         group_candidate_dist=self.transmit(candidate_local_dist, group_keys)
+
 
         # sort group distance
         select_top_start = time.time()

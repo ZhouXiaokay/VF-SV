@@ -41,7 +41,9 @@ class FaginBatchTrainer(object):
 
 
     def transmit(self, vector, group_keys):
+        dist.barrier()
         summed_vector = self.client.transmit(vector,group_keys=group_keys,operator='sum_batch')
+        dist.barrier()
         # print(summed_vector)
         return summed_vector
 

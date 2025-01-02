@@ -1,6 +1,6 @@
 import time
 import sys
-code_path = '/home/zxk/codes/VF-PS'
+code_path = '/home/zxk/codes/vfps_mi_diversity'
 sys.path.append(code_path)
 import sys
 import math
@@ -101,9 +101,11 @@ def run(args):
     end_key = int(math.pow(2, args.world_size)) - 1
     utility_start = time.time()
     for group_key in range(start_key, end_key + 1):
+        group_start = time.time()
         group_flags = utility_key_to_groups(group_key, world_size)
         if args.rank == 0:
             print("--- compute utility of group : {} ---".format(group_flags))
+            logger.info("--- compute utility of group : {} ---".format(group_flags))
 
         mi_values = []
 
@@ -119,7 +121,14 @@ def run(args):
 
             mi_values.append(mi_value)
             one_test_time = time.time() - one_test_start
-
+            dist.barrier()
+            if i % 500 == 0:
+                if args.rank == 0:
+                    print("Per 500 time cost is: {}".format(time.time() - test_start))
+                    logger.info("Per 500 time cost is: {}".format(time.time() - test_start))
+                test_start = time.time()
+        if args.rank == 0:
+            logger.info("--- group {} time cost : {} ---".format(group_flags, time.time() - group_start))
         g_mi_value = np.mean(mi_values)
 
         utility_value[group_key] = g_mi_value

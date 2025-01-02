@@ -125,7 +125,7 @@ def run(args):
                 var_key = np.var(mi_groups_dict[key])
                 if rank == 0:
                     print("key = {}, var = {}".format(key, var_key))
-                if var_key < 1e-4:
+                if var_key < args.var_tolerance:
                     adaptive_keys.remove(key)
                     if rank == 0:
                         print("remove group key = {}".format(key))

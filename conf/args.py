@@ -12,7 +12,7 @@ def global_args_parser():
         '-i',
         '--init-method',
         type=str,
-        default='tcp://127.0.0.1:23466',
+        default='tcp://127.0.0.1:23456',
         help='URL specifying how to initialize the package.')
     parser.add_argument('--rank',
                         type=int,
@@ -59,9 +59,6 @@ def global_args_parser():
                         default='cpu',
                         type=str,
                         help='the device')
-    parser.add_argument('--dataset',
-                        type=str,
-                        default='credit')
     parser.add_argument('--proj_size',
                         type=int,
                         default=5)
@@ -80,9 +77,13 @@ def global_args_parser():
     parser.add_argument('--k', type=int, default=3)
     parser.add_argument('--n-test', type=int, default=300)
     parser.add_argument('--test_ratio', type=float, default=0.3)
+    parser.add_argument('--dataset',
+                        type=str,
+                        default='web')
+    parser.add_argument('--var_tolerance', type=float, default=2e-3)
     parser.add_argument('--config', type=str, default='/home/zxk/codes/vfl_diversity_selection/'
                                                       'transmission/tenseal_shapley/ts_ckks_tiny.config')
-    parser.add_argument('--a_server_address', type=str, default='127.0.0.1:34666')
+    parser.add_argument('--a_server_address', type=str, default='127.0.0.1:34656')
     parser.add_argument('--mi_world_size', type=int, default=2)
     parser.add_argument('--sample_size', type=int, default=10)
 

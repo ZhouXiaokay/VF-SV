@@ -708,10 +708,10 @@ def load_dependent_features(num_partitions, num_samples=30000, num_features=20, 
 def load_and_split_dataset(d_name):
     try:
         # Check if the file exists
-        if os.path.exists("/home/zxk/codes/VF-PS/data_loader/mi_split_info.csv"):
+        if os.path.exists("/home/zxk/codes/VF-SV/data_loader/mi_split_info.csv"):
             print("File exists")
             # Read the CSV file
-            mi_split_info = pd.read_csv("/home/zxk/codes/VF-PS/data_loader/mi_split_info.csv",
+            mi_split_info = pd.read_csv("/home/zxk/codes/VF-SV/data_loader/mi_split_info.csv",
                                         header=None)
 
             # Find the row corresponding to the dataset name
