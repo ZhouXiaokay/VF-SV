@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 # Python version: 3.6
-
 import argparse
 
 
@@ -19,7 +18,7 @@ def global_args_parser():
                         default=0,
                         help='Rank of the current process.')
     parser.add_argument('--batch_size',
-                        default=100,
+                        default=32,
                         type=int,
                         help='local batch size')
     parser.add_argument('--num_clients',
@@ -46,7 +45,7 @@ def global_args_parser():
                         type=float,
                         help='convergence condition')
     parser.add_argument('--start_id',
-                        default='9',
+                        default='20',
                         type=int,
                         help='convergence condition')
     parser.add_argument('--n_epochs',
@@ -54,7 +53,7 @@ def global_args_parser():
                         default=1000)
     parser.add_argument('--epoch_total',
                         type=int,
-                        default=3)
+                        default=5)
     parser.add_argument('--device',
                         default='cpu',
                         type=str,
@@ -79,7 +78,7 @@ def global_args_parser():
     parser.add_argument('--test_ratio', type=float, default=0.3)
     parser.add_argument('--dataset',
                         type=str,
-                        default='web')
+                        default='credit')
     parser.add_argument('--var_tolerance', type=float, default=2e-3)
     parser.add_argument('--config', type=str, default='/home/zxk/codes/vfl_diversity_selection/'
                                                       'transmission/tenseal_shapley/ts_ckks_tiny.config')

@@ -10,8 +10,6 @@ import copy
 import torch
 import torch.distributed as dist
 from sklearn.metrics import accuracy_score, roc_auc_score
-
-# sys.path.append("../../")
 # from data_loader.data_partition import load_dummy_partition_with_label
 from data_loader.load_data import (load_dummy_partition_with_label,choose_dataset, load_dependent_data,
                                    load_dummy_partition_by_correlation, load_dependent_features, load_and_split_dataset)
@@ -108,15 +106,15 @@ def run(args):
     all_data = load_and_split_dataset(dataset)
     data = all_data[rank]
     targets = all_data['labels']
-    n_data = len(data)
+    num_data = len(data)
 
     if args.rank == 0:
         print("load data part cost {} s".format(time.time() - load_start))
-        print("number of data = {}".format(n_data))
+        print("number of data = {}".format(num_data ))
 
 
     data = random_projection(data, args.proj_size)
-    num_data = len(data)
+
     n_test = int(num_data * args.test_ratio)
     n_train = num_data - n_test
     # n_test = 10

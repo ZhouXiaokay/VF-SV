@@ -16,7 +16,7 @@ from sklearn.metrics import accuracy_score, roc_auc_score
 from data_loader.load_data import load_dummy_partition_with_label,choose_dataset, load_dependent_data, load_and_split_dataset
 from trainer.knn_mi.mi_all_reduce_trainer import AllReduceTrainer
 from utils.helpers import seed_torch
-
+import logging
 
 def dist_is_initialized():
     if dist.is_available():
@@ -40,9 +40,28 @@ def utility_key_to_groups(key, world_size):
         key = key // 2
     return client_attendance
 
+def random_projection(data, n_size):
+    """
+    Random projection
+    :param data: input data
+    :param n_size: the size of projected data
+    :return: projected data
+    """
+    n_features = data.shape[1]
+    random_matrix = np.random.normal(loc=0, scale=1, size=[n_features, n_size])
+    random_matrix = np.random.randn(n_features, n_size)
+    # project data
+    projected_data = np.matmul(data,random_matrix)
+    return projected_data
+
 
 def run(args):
     device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
+    logging.basicConfig(level=logging.DEBUG,
+                        filename=code_path + '/logs/ablation_study/all_reduce.log',
+                        datefmt='%Y/%m/%d %H:%M:%S',
+                        format='%(asctime)s - %(name)s - %(levelname)s - %(lineno)d - %(module)s - %(message)s')
+    logger = logging.getLogger(__name__)
     seed_torch()
     if args.rank == 0:
         print("device = {}".format(device))
@@ -50,30 +69,24 @@ def run(args):
     world_size = args.world_size
     rank = args.rank
 
-
-
     load_start = time.time()
-    # data, targets = load_dummy_partition_with_label(dataset, args.num_clients, rank)
     dataset = args.dataset
+    if args.rank == 0:
+        logger.info("dataset:{}".format(dataset))
     all_data = load_and_split_dataset(dataset)
     data = all_data[rank]
     targets = all_data['labels']
+    num_data = len(data)
 
     if args.rank == 0:
         print("load data part cost {} s".format(time.time() - load_start))
-    n_data = len(data)
-    if args.rank == 0:
-        print("number of data = {}".format(n_data))
+        print("number of data = {}".format(num_data))
 
-    # # shuffle the data to split train data and test data
-    # shuffle_ind = np.arange(n_data)
-    # np.random.shuffle(shuffle_ind)
-    # if args.rank == 0:
-    #     print("test data indices: {}".format(shuffle_ind[:args.n_test]))
-    # data = data[shuffle_ind]
-    # targets = targets[shuffle_ind]
-    num_data = len(data)
+    data = random_projection(data, args.proj_size)
+
     n_test = int(num_data * args.test_ratio)
+    n_train = num_data - n_test
+    # n_test = 10
     train_data = data[n_test:]
     train_targets = targets[n_test:]
     test_data = data[:n_test]
@@ -159,12 +172,14 @@ def run(args):
     if args.rank == 0:
         print("calculate shapley value cost {:.2f} s".format(time.time() - shapley_start))
         print("shapley value of {} clients: {}".format(len(shapley_value), shapley_value))
+        logger.info("shapley value of {} clients: {}".format(len(shapley_value), shapley_value))
 
     shapley_ind = np.argsort(np.array(shapley_value))
     if args.rank == 0:
         print("client ranking = {}".format(shapley_ind.tolist()[::-1]))
-    if args.rank == 0:
         print("Time = {}".format(time.time() - load_start))
+        logger.info("client ranking = {}".format(shapley_ind.tolist()[::-1]))
+        logger.info("Time = {}".format(time.time() - load_start))
 
 
 

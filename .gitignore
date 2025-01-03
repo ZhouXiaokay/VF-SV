@@ -67,6 +67,9 @@ instance/
 
 # Scrapy stuff:
 .scrapy
+*.pth
+test_*.py
+workspace.py
 
 # Sphinx documentation
 docs/_build/

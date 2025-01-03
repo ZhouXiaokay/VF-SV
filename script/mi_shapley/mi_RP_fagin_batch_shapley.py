@@ -73,11 +73,10 @@ def run(args):
     all_data = load_and_split_dataset(dataset)
     data = all_data[rank]
     targets = all_data['labels']
+    n_data = len(data)
 
     if args.rank == 0:
         print("load data part cost {} s".format(time.time() - load_start))
-    n_data = len(data)
-    if args.rank == 0:
         print("number of data = {}".format(n_data))
 
     data = random_projection(data, args.proj_size)

@@ -10,12 +10,14 @@ from torch.multiprocessing import Process
 import torch
 import torch.distributed as dist
 from sklearn.metrics import accuracy_score, roc_auc_score
-
-# sys.path.append("../../")
 # from data_loader.data_partition import load_dummy_partition_with_label
-from data_loader.load_data import load_dummy_partition_with_label,choose_dataset, load_dependent_data, load_and_split_dataset
-from trainer.knn_mi.mi_all_reduce_trainer import AllReduceTrainer
+from data_loader.load_data import (load_dummy_partition_with_label,choose_dataset, load_dependent_data,
+                                   load_dummy_partition_by_correlation, load_dependent_features, load_and_split_dataset)
+from trainer.knn_mi_RP.mi_lsh_all_reduce_trainer import LSHAllReduceTrainer
 from utils.helpers import seed_torch
+from utils.comm_op import np_all_gather
+import logging
+
 
 
 def dist_is_initialized():
@@ -40,50 +42,92 @@ def utility_key_to_groups(key, world_size):
         key = key // 2
     return client_attendance
 
+def random_projection(data, n_size):
+    """
+    Random projection
+    :param data: input data
+    :param n_size: the size of projected data
+    :return: projected data
+    """
+    n_features = data.shape[1]
+    random_matrix = np.random.normal(loc=0, scale=1, size=[n_features, n_size])
+    random_matrix = np.random.randn(n_features, n_size)
+    # project data
+    projected_data = np.matmul(data,random_matrix)
+    return projected_data
+
+def create_hash_table(projected_data, depth):
+    n_data = len(projected_data)
+    hash_tables = {}
+    hash_index = hash_func(projected_data)
+    for i in range(n_data):
+        for k in range(depth):
+            key = hash_index[i][k]
+            hash_tables.setdefault(key, set()).add(i)
+    return hash_tables
+
+def query_hash_table(query_data, hash_tables, num_train ,depth):
+    query_index = hash_func(query_data).ravel()
+    candidates = set()
+    for k in range(depth):
+        key = query_index[k]
+        if key not in hash_tables:
+            query_set = {i for i in range(num_train)}
+        else:
+            query_set = hash_tables[key]
+        candidates.update(query_set)
+    return list(candidates)
+
+def hash_func(projected_data):
+    hash_val = np.floor(np.abs(projected_data))
+    return hash_val
 
 def run(args):
     device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
+    logging.basicConfig(level=logging.DEBUG,
+                        filename=code_path + '/logs/ablation_study/all_reduce_lsh.log',
+                        datefmt='%Y/%m/%d %H:%M:%S',
+                        format='%(asctime)s - %(name)s - %(levelname)s - %(lineno)d - %(module)s - %(message)s')
+    logger = logging.getLogger(__name__)
     seed_torch()
     if args.rank == 0:
         print("device = {}".format(device))
 
     world_size = args.world_size
     rank = args.rank
-
-
-
     load_start = time.time()
     # data, targets = load_dummy_partition_with_label(dataset, args.num_clients, rank)
     dataset = args.dataset
+    if args.rank == 0:
+        logger.info("dataset:{}".format(dataset))
     all_data = load_and_split_dataset(dataset)
     data = all_data[rank]
     targets = all_data['labels']
+    num_data = len(data)
 
     if args.rank == 0:
         print("load data part cost {} s".format(time.time() - load_start))
-    n_data = len(data)
-    if args.rank == 0:
-        print("number of data = {}".format(n_data))
+        print("number of data = {}".format(num_data ))
 
-    # # shuffle the data to split train data and test data
-    # shuffle_ind = np.arange(n_data)
-    # np.random.shuffle(shuffle_ind)
-    # if args.rank == 0:
-    #     print("test data indices: {}".format(shuffle_ind[:args.n_test]))
-    # data = data[shuffle_ind]
-    # targets = targets[shuffle_ind]
-    num_data = len(data)
+    data = random_projection(data, args.proj_size)
     n_test = int(num_data * args.test_ratio)
     train_data = data[n_test:]
     train_targets = targets[n_test:]
     test_data = data[:n_test]
     test_targets = targets[:n_test]
+    depth = 5
+    all_train_data = np_all_gather(train_data)
+    all_test_data = np_all_gather(test_data)
+
+    train_data_list = np.array_split(all_train_data,world_size,axis=1)
+    test_data_list = np.array_split(all_test_data,world_size,axis=1)
+
 
     # MI of a group of clients, key is binary encode of client attendance
     utility_value = dict()
     n_utility_round = 0
 
-    trainer = AllReduceTrainer(args, train_data, train_targets)
+    trainer = LSHAllReduceTrainer(args, train_data, train_targets)
 
     # cal utility of all group_keys, group key = 1-(2^k-1)
     start_key = 1
@@ -91,19 +135,23 @@ def run(args):
     utility_start = time.time()
     for group_key in range(start_key, end_key + 1):
         group_flags = utility_key_to_groups(group_key, world_size)
+        group_train_data = np.concatenate([train_data_list[i] for i in range(world_size) if group_flags[i] == 1], axis=1)
+        group_test_data = np.concatenate([test_data_list[i] for i in range(world_size) if group_flags[i] == 1], axis=1)
+        group_hash_table = create_hash_table(group_train_data, depth)
         if args.rank == 0:
             print("--- compute utility of group : {} ---".format(group_flags))
 
         mi_values = []
-
         test_start = time.time()
 
         for i in range(n_test):
-            # print(">>>>>> test[{}] <<<<<<".format(i))
+            if args.rank == 0:
+                print(">>>>>> test[{}] <<<<<<".format(i))
             one_test_start = time.time()
             cur_test_data = test_data[i]
             cur_test_target = test_targets[i]
-            mi_value = trainer.find_top_k(cur_test_data, cur_test_target, args.k, group_flags)
+            lsh_candidates = query_hash_table(group_test_data, group_hash_table, len(group_train_data), depth=1)
+            mi_value = trainer.find_top_k(cur_test_data, cur_test_target, args.k, group_flags,lsh_candidates)
 
             mi_values.append(mi_value)
             one_test_time = time.time() - one_test_start
@@ -159,12 +207,21 @@ def run(args):
     if args.rank == 0:
         print("calculate shapley value cost {:.2f} s".format(time.time() - shapley_start))
         print("shapley value of {} clients: {}".format(len(shapley_value), shapley_value))
+        logger.info("shapley value of {} clients: {}".format(len(shapley_value), shapley_value))
 
     shapley_ind = np.argsort(np.array(shapley_value))
     if args.rank == 0:
         print("client ranking = {}".format(shapley_ind.tolist()[::-1]))
-    if args.rank == 0:
         print("Time = {}".format(time.time() - load_start))
+        print("number of train data = {}".format(len(train_data)))
+        print("number of test data = {}".format(len(trainer.n_candidates)))
+        print("number of candidates = {}".format(np.mean(trainer.n_candidates)))
+        logger.info("client ranking = {}".format(shapley_ind.tolist()[::-1]))
+        logger.info("number of train data = {}".format(len(train_data)))
+        logger.info("number of test data = {}".format(len(trainer.n_candidates)))
+        logger.info("number of candidates = {}".format(np.mean(trainer.n_candidates)))
+        logger.info("Time = {}".format(time.time() - load_start))
+
 
 
 
