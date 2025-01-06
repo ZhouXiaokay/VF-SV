@@ -11,14 +11,14 @@ def global_args_parser():
         '-i',
         '--init-method',
         type=str,
-        default='tcp://127.0.0.1:23456',
+        default='tcp://127.0.0.1:23466',
         help='URL specifying how to initialize the package.')
     parser.add_argument('--rank',
                         type=int,
                         default=0,
                         help='Rank of the current process.')
     parser.add_argument('--batch_size',
-                        default=32,
+                        default=64,
                         type=int,
                         help='local batch size')
     parser.add_argument('--num_clients',
@@ -37,7 +37,7 @@ def global_args_parser():
                         type=float,
                         help='learning rate')
     parser.add_argument('--seed',
-                        default=3,
+                        default=42,
                         type=int,
                         help='random seed')
     parser.add_argument('--loss_total',
@@ -63,7 +63,7 @@ def global_args_parser():
                         default=5)
     parser.add_argument('--n_bottom_out',
                         type=int,
-                        default=5)
+                        default=8)
     parser.add_argument('--n_classes',
                         type=int,
                         default=2)
@@ -78,7 +78,7 @@ def global_args_parser():
     parser.add_argument('--test_ratio', type=float, default=0.3)
     parser.add_argument('--dataset',
                         type=str,
-                        default='credit')
+                        default='bank')
     parser.add_argument('--var_tolerance', type=float, default=2e-3)
     parser.add_argument('--config', type=str, default='/home/zxk/codes/vfl_diversity_selection/'
                                                       'transmission/tenseal_shapley/ts_ckks_tiny.config')

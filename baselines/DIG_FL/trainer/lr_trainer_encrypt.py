@@ -5,6 +5,7 @@ import torch.optim as optim
 from utils.comm_op import sum_all_reduce_tensor, all_gather_variable_tensors
 from utils.helpers import seed_torch
 import torch.distributed as dist
+from transmission.tenseal_shapley.tenseal_shapley_client import ShapleyClient
 
 
 class LRTrainer(object):
@@ -17,13 +18,27 @@ class LRTrainer(object):
         self.criterion = BCELoss()
         self.optimizer = optim.Adam(self.lr.parameters(), lr=1e-3)
         self.rank = args.rank
+        self.server_addr = args.a_server_address
+        self.client = ShapleyClient(self.server_addr, args)
+
+    def transmit(self, vector):
+        dist.barrier()
+        vector = vector.squeeze()
+        np_vector = vector.detach().numpy()
+        summed_vector = self.client.transmit(np_vector)
+        summed_tensor = torch.from_numpy(summed_vector).unsqueeze(dim=1)
+
+        return summed_tensor
+
 
 
     def one_epoch(self, train_data, train_targets, val_data, val_targets):
 
         # compute the validation loss and grads
         val_z = self.lr(val_data)
+        enc_val_sum_z = self.transmit(val_z)
         val_sum_z = sum_all_reduce_tensor(val_z)
+        # val_sum_z.requires_grad = True
         val_h = torch.sigmoid(val_sum_z)
         val_loss = self.criterion(val_h, val_targets)
         val_loss.backward()
@@ -33,7 +48,9 @@ class LRTrainer(object):
 
         # train model
         partial_z = self.lr(train_data)
+        enc_sum_z = self.transmit(partial_z)
         sum_z = sum_all_reduce_tensor(partial_z)
+        #sum_z.requires_grad = True
         h = torch.sigmoid(sum_z)
         loss = self.criterion(h, train_targets)
         self.optimizer.zero_grad()
@@ -50,7 +67,7 @@ class LRTrainer(object):
         # print("rank = {}, val_global_grads = {}".format(self.rank, val_global_grads))
         phi = torch.dot(global_train_grads, val_global_grads)
         dist.barrier()
-        return loss.item(), phi
+        return loss.item(), phi.item()
 
     def assign_continuous_values(self, target_tensor, source_tensor, start_idx, dim=0):
         """

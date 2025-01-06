@@ -10,7 +10,7 @@ SEED = global_args.seed
 seed_torch()
 import argparse
 import torch.distributed as dist
-from baselines.DIG_FL.trainer.lr_trainer import LRTrainer
+from baselines.DIG_FL.trainer.lr_trainer_encrypt import LRTrainer
 from data_loader.load_data import (load_dummy_partition_with_label,choose_dataset, load_dependent_data,
                                    load_dummy_partition_by_correlation, load_dependent_features, load_and_split_dataset)
 from torch.multiprocessing import Process
@@ -105,7 +105,8 @@ def run(args):
     # save_path = '../save/all_participate/credit/lr_rank_{0}.pth'.format(args.rank)
     # trainer.save(args.save_path)
     phi = sum(phi_list) / len(phi_list)
-    all_phi = sum_all_gather_tensor(torch.tensor(phi).reshape(1,1)).clone().numpy().tolist()[0]
+    phi_tensor = torch.tensor(phi).reshape(1,1)
+    all_phi = sum_all_gather_tensor(phi_tensor).numpy().tolist()[0]
     print("client ranking = {}".format(np.argsort(all_phi)))
     print(">>> task finish, cost {:.2f} s".format(time.time() - run_start))
 

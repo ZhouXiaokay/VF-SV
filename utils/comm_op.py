@@ -39,8 +39,57 @@ def sum_sqrt_all_gather(dist_arr):
 def sum_all_gather_tensor(params_tensor):
     tensor_list = [torch.zeros_like(params_tensor) for _ in range(dist.get_world_size())]
     dist.all_gather(tensor_list, params_tensor)
+    # print("tensor_list = ", tensor_list)
     gather_tensor = torch.concat(tensor_list, dim=-1)
     return gather_tensor
+
+def all_gather_tensor_list(params_tensor):
+    tensor_list = [torch.zeros_like(params_tensor) for _ in range(dist.get_world_size())]
+    dist.all_gather(tensor_list, params_tensor)
+    # print("tensor_list = ", tensor_list)
+    return tensor_list
+
+def all_gather_variable_tensors(local_tensor, group=None):
+    """
+    Perform all_gather on tensors of different sizes across ranks.
+
+    Args:
+        local_tensor (torch.Tensor): The tensor local to this rank.
+        group (optional): The process group to work on (default: None).
+
+    Returns:
+        list[torch.Tensor]: List of tensors gathered from all ranks.
+    """
+    if group is None:
+        group = dist.group.WORLD
+
+    # Get the size of the local tensor
+    local_size = torch.tensor([local_tensor.numel()], dtype=torch.long, device=local_tensor.device)
+
+    # Gather all sizes
+    all_sizes = [torch.zeros_like(local_size) for _ in range(dist.get_world_size(group))]
+    dist.all_gather(all_sizes, local_size, group=group)
+
+    # Find the maximum size
+    max_size = max([size.item() for size in all_sizes])
+
+    # Pad the local tensor to the maximum size
+    padded_tensor = torch.zeros(max_size, dtype=local_tensor.dtype, device=local_tensor.device)
+    padded_tensor[:local_tensor.numel()] = local_tensor.view(-1)
+
+    # Gather all padded tensors
+    gathered_tensors = [torch.zeros_like(padded_tensor) for _ in range(dist.get_world_size(group))]
+    dist.all_gather(gathered_tensors, padded_tensor, group=group)
+
+    # Remove padding based on the original sizes
+    result = []
+    for i, size in enumerate(all_sizes):
+        result.append(gathered_tensors[i][:size.item()].view(-1))
+
+    gather_tensor = torch.concat(result, dim=-1)
+
+    return gather_tensor
+
 
 # def all_gather_list(params_list):
 #     dist_tensor = torch.from_numpy(params_list)

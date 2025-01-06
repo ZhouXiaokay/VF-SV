@@ -35,8 +35,6 @@ def dist_is_initialized():
 def run(args):
     run_start = time.time()
     log_file = code_path + '/logs/baselines/VFDV_IM/mlp_reweight.log'
-    if args.avg_flag:
-        log_file =  code_path + '/logs/mlp_avg.log'
     logging.basicConfig(level=logging.DEBUG,
                         filename= log_file,
                         datefmt='%Y/%m/%d %H:%M:%S',
