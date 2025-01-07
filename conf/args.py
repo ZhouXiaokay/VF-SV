@@ -50,7 +50,7 @@ def global_args_parser():
                         help='convergence condition')
     parser.add_argument('--n_epochs',
                         type=int,
-                        default=50)
+                        default=100)
     parser.add_argument('--epoch_total',
                         type=int,
                         default=5)
