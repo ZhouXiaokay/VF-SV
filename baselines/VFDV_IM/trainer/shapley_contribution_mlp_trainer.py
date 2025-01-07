@@ -98,7 +98,7 @@ class ShapleyContrMLPTrainer(object):
             concat_bottom = self.__select_bottom_out(all_bottom)
             pred = self.top_model(concat_bottom)
         pred = sum_all_reduce_tensor(pred) / self.group_size
-        pos_prob = torch.softmax(pred, dim=1).max(dim=1).values.detach().numpy()
+        pos_prob = torch.softmax(pred, dim=1)[:,1].detach().numpy()
         pred = torch.softmax(pred, dim=1).max(dim=1).indices.detach().numpy()
 
         return pred, pos_prob
