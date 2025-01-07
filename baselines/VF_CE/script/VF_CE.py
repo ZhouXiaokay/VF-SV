@@ -5,6 +5,7 @@ sys.path.append(code_path)
 from utils.helpers import seed_torch
 from conf import global_args_parser
 import torch
+import os
 global_args = global_args_parser()
 SEED = global_args.seed
 seed_torch()
@@ -35,20 +36,30 @@ def run(args):
     run_start = time.time()
     log_file = code_path + '/logs/baselines/VF_CE/VF_CE.log'
 
+
     print("rank = {}, world size = {}".format(args.rank, args.world_size))
 
+    rank = args.rank
     dataset = args.dataset
+    save_path = code_path + '/baselines/VF_CE/save/' + dataset
 
-    file_name = 'optdigits'
-    train_x, train_targets = load_data(file_name)
-    train_shuffled_targets = train_targets.copy()
-    random.shuffle(train_shuffled_targets)
+    if args.rank == 0:
+        if not os.path.exists(save_path):
+            # if not save path, create it
+            os.makedirs(save_path)
+
+    all_data = load_and_split_dataset(dataset)
+    data = all_data[rank]
+    targets = all_data['labels'].reshape(data.shape[0], 1)
+    shuffled_targets = targets.copy()
+    random.shuffle(shuffled_targets)
+
+    train_x = torch.from_numpy(data).float()
+    train_targets = torch.from_numpy(targets).float()
+    train_shuffled_targets = torch.from_numpy(shuffled_targets).float()
+
     n_train = train_x.shape[0]
     n_f = train_x.shape[1]
-
-    train_x = torch.from_numpy(train_x).float()
-    train_targets = torch.from_numpy(train_targets).float()
-    train_shuffle_targets = torch.from_numpy(train_shuffled_targets).float()
 
 
     batch_size = args.batch_size
@@ -71,7 +82,8 @@ def run(args):
             batch_ids = batches[i]
             batch_x = train_x[batch_ids]
             batch_targets = train_targets[batch_ids]
-            batch_shuffle_targets = train_shuffle_targets[batch_ids]
+            # print(batch_targets.shape)
+            batch_shuffle_targets = train_shuffled_targets[batch_ids]
             batch_loss = trainer.one_iteration(batch_x, batch_targets, batch_shuffle_targets)
             epoch_loss += batch_loss
             if epoch_idx == n_epochs - 1:
@@ -85,13 +97,22 @@ def run(args):
 
         # if epoch_idx >= start_id and len(epoch_loss_lst) > epoch_tol \
         #         and min(epoch_loss_lst[:-epoch_tol]) - min(epoch_loss_lst[-epoch_tol:]) < loss_tol:
+        #     for i in range(n_batches):
+        #         batch_ids = batches[i]
+        #         batch_x = train_x[batch_ids]
+        #         batch_targets = train_targets[batch_ids]
+        #         # print(batch_targets.shape)
+        #         batch_shuffle_targets = train_shuffled_targets[batch_ids]
+        #         batch_loss = trainer.one_iteration(batch_x, batch_targets, batch_shuffle_targets)
+        #         epoch_loss += batch_loss
+        #         trainer.attention_weights.append(trainer.top_model.attn_weights)
         #     print("!!! train loss does not decrease > {} in {} epochs, early stop !!!"
         #           .format(loss_tol, epoch_tol))
         #     break
 
     if args.rank == 0:
         print(">>> training cost {} s".format(time.time() - run_start))
-        trainer.sava_attention_weights('../save/{}'.format(file_name))
+        trainer.sava_attention_weights(save_path)
 def init_processes(arg, fn):
     rank = arg.rank
     size = arg.world_size

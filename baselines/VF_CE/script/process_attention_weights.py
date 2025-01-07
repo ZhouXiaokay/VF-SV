@@ -1,11 +1,18 @@
+import sys
+code_path = '/home/zxk/codes/vfps_mi_diversity'
+sys.path.append(code_path)
 import numpy as np
 import pandas as pd
 import torch
 import matplotlib.pyplot as plt
 from scipy.stats import norm
 from scipy.optimize import curve_fit
+from conf import global_args_parser
 
-dir_path = r'../save/optdigits'
+args = global_args_parser()
+
+dataset = args.dataset
+dir_path = code_path + '/baselines/VF_CE/save/' + dataset
 client_num = 4
 
 

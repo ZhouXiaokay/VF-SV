@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-
+import torch
 
 # 模拟取数据集
 def gen_batches(data_num, batch_size):
@@ -52,3 +52,9 @@ def split_data(X_train, splits, feature_num):
         raise Exception('this split is not reasonable')
 
     return X_train_s
+
+if __name__ == "__main__":
+    train_x, targets = load_data('optdigits')
+    X_train_s = split_data(train_x, [2, 8, 16, 38], 64)
+    targets = torch.from_numpy(targets).float()
+    print(targets.shape)

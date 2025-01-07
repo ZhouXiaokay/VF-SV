@@ -18,7 +18,7 @@ def global_args_parser():
                         default=0,
                         help='Rank of the current process.')
     parser.add_argument('--batch_size',
-                        default=64,
+                        default=32,
                         type=int,
                         help='local batch size')
     parser.add_argument('--num_clients',
@@ -50,7 +50,7 @@ def global_args_parser():
                         help='convergence condition')
     parser.add_argument('--n_epochs',
                         type=int,
-                        default=1000)
+                        default=50)
     parser.add_argument('--epoch_total',
                         type=int,
                         default=5)
@@ -78,7 +78,7 @@ def global_args_parser():
     parser.add_argument('--test_ratio', type=float, default=0.3)
     parser.add_argument('--dataset',
                         type=str,
-                        default='bank')
+                        default='credit')
     parser.add_argument('--var_tolerance', type=float, default=2e-3)
     parser.add_argument('--config', type=str, default='/home/zxk/codes/vfl_diversity_selection/'
                                                       'transmission/tenseal_shapley/ts_ckks_tiny.config')

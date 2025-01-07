@@ -130,14 +130,14 @@ def run(args):
                 .format(epoch_idx, epoch_loss, time.time() - epoch_start, epoch_train_time, epoch_test_time,
                         accuracy,
                         auc))
-        epoch_loss_lst.append(epoch_loss)
-
-        if epoch_idx >= start_id and len(epoch_loss_lst) > epoch_tol \
-                and min(epoch_loss_lst[:-epoch_tol]) - min(epoch_loss_lst[-epoch_tol:]) < loss_tol:
-            if args.rank == 0:
-                print("!!! train loss does not decrease > {} in {} epochs, early stop !!!"
-                      .format(loss_tol, epoch_tol))
-            break
+        # epoch_loss_lst.append(epoch_loss)
+        #
+        # if epoch_idx >= start_id and len(epoch_loss_lst) > epoch_tol \
+        #         and min(epoch_loss_lst[:-epoch_tol]) - min(epoch_loss_lst[-epoch_tol:]) < loss_tol:
+        #     if args.rank == 0:
+        #         print("!!! train loss does not decrease > {} in {} epochs, early stop !!!"
+        #               .format(loss_tol, epoch_tol))
+        #     break
     n_utility_epochs += epoch_idx + 1
 
     first_trainer.save(args.save_path)
@@ -219,12 +219,12 @@ def run(args):
                             auc))
             epoch_loss_lst.append(epoch_loss)
 
-            if epoch_idx >= start_id and len(epoch_loss_lst) > epoch_tol \
-                    and min(epoch_loss_lst[:-epoch_tol]) - min(epoch_loss_lst[-epoch_tol:]) < loss_tol:
-                if args.rank == 0:
-                    print("!!! train loss does not decrease > {} in {} epochs, early stop !!!"
-                          .format(loss_tol, epoch_tol))
-                break
+            # if epoch_idx >= start_id and len(epoch_loss_lst) > epoch_tol \
+            #         and min(epoch_loss_lst[:-epoch_tol]) - min(epoch_loss_lst[-epoch_tol:]) < loss_tol:
+            #     if args.rank == 0:
+            #         print("!!! train loss does not decrease > {} in {} epochs, early stop !!!"
+            #               .format(loss_tol, epoch_tol))
+            #     break
         n_utility_epochs += epoch_idx + 1
 
         utility_value[group_key] = accuracy

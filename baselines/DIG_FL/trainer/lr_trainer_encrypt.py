@@ -86,25 +86,44 @@ class LRTrainer(object):
         # Perform the assignment
         target_tensor.narrow(dim, start_idx, source_tensor.size(dim)).copy_(source_tensor)
 
-    def one_iteration(self, x, y):
+    def one_iteration(self, train_data, train_targets, val_data, val_targets):
+        # compute the validation loss and grads
+        val_z = self.lr(val_data)
+        enc_val_sum_z = self.transmit(val_z)
+        val_sum_z = sum_all_reduce_tensor(val_z)
+        # val_sum_z.requires_grad = True
+        val_h = torch.sigmoid(val_sum_z)
+        val_loss = self.criterion(val_h, val_targets)
+        val_loss.backward()
+        val_grads = self.lr.linear.weight.grad.squeeze()
+        val_global_grads = all_gather_variable_tensors(val_grads)
+        self.optimizer.zero_grad()
 
-        partial_z = self.lr(x)
+        # train model
+        partial_z = self.lr(train_data)
+        enc_sum_z = self.transmit(partial_z)
         sum_z = sum_all_reduce_tensor(partial_z)
+        # sum_z.requires_grad = True
         h = torch.sigmoid(sum_z)
-        loss = torch.zeros(1)
-
-        loss = self.criterion(h, y)
+        loss = self.criterion(h, train_targets)
         self.optimizer.zero_grad()
         loss.backward()
+        train_grads = self.lr.linear.weight.grad.squeeze()
         self.optimizer.step()
-        grads = self.lr.linear.weight.grad
-        # global_loss = loss.detach()
-        # global_loss = sum_all_reduce_tensor(global_loss)
 
-        global_grads = all_gather_variable_tensors(grads)
+        global_train_grads = torch.zeros_like(val_global_grads)
+
+        start_id = sum(self.nf_shape_list[:self.rank])
+        self.assign_continuous_values(global_train_grads, train_grads, start_id)
+
+        # print("rank = {}, global_train_grads = {}".format(self.rank, global_train_grads))
+        # print("rank = {}, val_global_grads = {}".format(self.rank, val_global_grads))
+        phi = torch.dot(global_train_grads, val_global_grads)
+        dist.barrier()
+        return loss.item(), phi.item()
 
 
-        return loss.item(),grads
+
 
     def predict(self, x):
         partial_z = self.lr(x)
