@@ -13,7 +13,7 @@ from sklearn.metrics import accuracy_score, roc_auc_score
 
 # sys.path.append("../../")
 from data_loader.load_data import (load_dummy_partition_with_label,choose_dataset, load_dependent_data,
-                                   load_dummy_partition_by_correlation, load_dependent_features, load_and_split_dataset)
+                                   load_and_split_random_dataset, load_dependent_features, load_and_split_dataset)
 from trainer.acc_shapley.knn_fagin_batch_trainer import FaginBatchTrainer
 from utils.helpers import seed_torch
 import logging
@@ -61,8 +61,9 @@ def run(args):
     load_start = time.time()
     dataset = args.dataset
     if args.rank == 0:
-        logger.info("dataset:{}".format(dataset))
-    all_data = load_and_split_dataset(dataset)
+        logger.info("dataset:{}, seed:{}".format(dataset, args.seed))
+    all_data = load_and_split_random_dataset(dataset)
+    # all_data = load_and_split_dataset(dataset)
     data = all_data[rank]
     targets = all_data['labels']
     num_data = len(data)

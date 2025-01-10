@@ -14,7 +14,6 @@ from utils.comm_op import gather, sum_sqrt_all_reduce, sum_all_reduce
 from utils.fagin_utils import suggest_size, master_count_by_arr, master_count_fagin_group
 from transmission.tenseal_shapley.tenseal_shapley_client import ShapleyClient
 
-
 def get_utility_key(client_attendance):
     key = 0
     for i in reversed(client_attendance):
@@ -140,14 +139,19 @@ class FaginBatchTrainer(object):
         candidate_local_dist = local_dist[candidate_ind]
 
         # for each group cal its global distance
-        dist.barrier()
-        group_candidate_dist=self.transmit(candidate_local_dist, group_keys)
+        group_candidate_dist_list = []
+        for key in group_keys:
+            group_flags = utility_key_to_groups(key, self.args.world_size)
+            group_local_dist = group_flags[rank] * candidate_local_dist
+            group_dist = sum_all_reduce(group_local_dist)
+            group_candidate_dist_list.append(group_dist)
+        # group_candidate_dist = np.array(group_candidate_dist_list)
+        group_candidate_dist = self.transmit(candidate_local_dist, group_keys)
 
-
-        # sort group distance
         # sort group distance
         all_groups_sorted_ids = np.argsort(group_candidate_dist, axis=1)
         all_groups_sorted_ids = np.array(candidate_ind)[all_groups_sorted_ids]
+
         client_mi_values = np.zeros(self.args.world_size)
 
         for ids in range(len(group_keys)):

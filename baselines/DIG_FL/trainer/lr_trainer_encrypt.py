@@ -122,6 +122,17 @@ class LRTrainer(object):
         dist.barrier()
         return loss.item(), phi.item()
 
+    def one_batch_forward(self, train_data):
+        partial_z = self.lr(train_data)
+        enc_sum_z = self.transmit(partial_z)
+        sum_z = sum_all_reduce_tensor(partial_z)
+        # sum_z.requires_grad = True
+        h = torch.sigmoid(sum_z)
+        return h
+
+    def one_epoch_backward(self, epoch_loss, ):
+        self.optimizer.zero_grad()
+        epoch_loss.backward()
 
 
 

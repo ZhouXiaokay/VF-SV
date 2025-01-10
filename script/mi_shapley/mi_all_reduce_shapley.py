@@ -13,10 +13,10 @@ from sklearn.metrics import accuracy_score, roc_auc_score
 
 # sys.path.append("../../")
 # from data_loader.data_partition import load_dummy_partition_with_label
-from data_loader.load_data import load_dummy_partition_with_label,choose_dataset, load_dependent_data, load_and_split_dataset
+from data_loader.load_data import load_and_split_random_dataset, load_dependent_data, load_and_split_dataset
 from trainer.knn_mi.mi_all_reduce_trainer import AllReduceTrainer
 from utils.helpers import seed_torch
-
+import logging
 
 def dist_is_initialized():
     if dist.is_available():
@@ -43,6 +43,11 @@ def utility_key_to_groups(key, world_size):
 
 def run(args):
     device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
+    logging.basicConfig(level=logging.DEBUG,
+                        filename=code_path + '/logs/baselines/Naive_KNN/all_reduce_no_encrypt.log',
+                        datefmt='%Y/%m/%d %H:%M:%S',
+                        format='%(asctime)s - %(name)s - %(levelname)s - %(lineno)d - %(module)s - %(message)s')
+    logger = logging.getLogger(__name__)
     seed_torch()
     if args.rank == 0:
         print("device = {}".format(device))
@@ -50,20 +55,22 @@ def run(args):
     world_size = args.world_size
     rank = args.rank
 
-
+    if args.rank == 0:
+        logger.info("dataset = {}, seed = {}, num_clients = {}, n_epochs = {}".format(
+            args.dataset, args.seed, args.num_clients, args.n_epochs))
 
     load_start = time.time()
     # data, targets = load_dummy_partition_with_label(dataset, args.num_clients, rank)
     dataset = args.dataset
-    all_data = load_and_split_dataset(dataset)
+    # all_data = load_and_split_dataset(dataset)
+    all_data = load_and_split_random_dataset(dataset)
     data = all_data[rank]
     targets = all_data['labels']
+    num_data = len(data)
 
     if args.rank == 0:
         print("load data part cost {} s".format(time.time() - load_start))
-    n_data = len(data)
-    if args.rank == 0:
-        print("number of data = {}".format(n_data))
+        print("number of data = {}".format(num_data))
 
     # # shuffle the data to split train data and test data
     # shuffle_ind = np.arange(n_data)
@@ -72,7 +79,6 @@ def run(args):
     #     print("test data indices: {}".format(shuffle_ind[:args.n_test]))
     # data = data[shuffle_ind]
     # targets = targets[shuffle_ind]
-    num_data = len(data)
     n_test = int(num_data * args.test_ratio)
     train_data = data[n_test:]
     train_targets = targets[n_test:]
@@ -123,6 +129,7 @@ def run(args):
         n_participant = sum(group_flags)
         group_mi_sum[n_participant - 1] += utility_value[group_key]
         if args.rank == 0:
+            logger.info("group {}, MI = {}".format(group_flags, utility_value[group_key]))
             print("group {}, MI = {}".format(group_flags, utility_value[group_key]))
     if args.rank == 0:
         print("MI sum of different size: {}".format(group_mi_sum))
@@ -156,16 +163,15 @@ def run(args):
         score /= float(math.pow(2, world_size - 1))
         shapley_value[i] = score
         n_shapley_round += 1
+    shapley_ind = np.argsort(np.array(shapley_value))
     if args.rank == 0:
         print("calculate shapley value cost {:.2f} s".format(time.time() - shapley_start))
         print("shapley value of {} clients: {}".format(len(shapley_value), shapley_value))
-
-    shapley_ind = np.argsort(np.array(shapley_value))
-    if args.rank == 0:
         print("client ranking = {}".format(shapley_ind.tolist()[::-1]))
-    if args.rank == 0:
         print("Time = {}".format(time.time() - load_start))
-
+        logger.info("shapley value of {} clients: {}".format(len(shapley_value), shapley_value))
+        logger.info("client ranking = {}".format(shapley_ind.tolist()[::-1]))
+        logger.info("total time = {}".format(time.time() - load_start))
 
 
 def init_processes(arg, fn):

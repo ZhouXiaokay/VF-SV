@@ -745,6 +745,20 @@ def load_and_split_dataset(d_name):
         return None
 
 
+def load_and_split_random_dataset(d_name, num_clients=4):
+    data = choose_dataset(d_name)
+    result = {}
+    split_x = vertical_split(data, num_clients)
+    split_x_list = []
+    for i in range(num_clients):
+        result[i] = split_x[i]
+        split_x_list.append(split_x[i])
+    all_features = np.concatenate(split_x_list, axis=1)
+    labels = data['y']
+    result['labels'] = labels
+    result['features'] = all_features
+    return result
+
 def choose_dataset(d_name):
     if d_name == 'credit':
         data = load_credit_data()

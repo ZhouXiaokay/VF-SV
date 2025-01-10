@@ -22,7 +22,7 @@ from conf.args import global_args_parser
 
 from baselines.VF_CE.trainer.mine_trainer import MINETrainer
 from baselines.VF_CE.utils.helpers import gen_batches, load_data, split_data
-
+import logging
 
 
 def dist_is_initialized():
@@ -35,12 +35,20 @@ def dist_is_initialized():
 def run(args):
     run_start = time.time()
     log_file = code_path + '/logs/baselines/VF_CE/VF_CE.log'
+    logging.basicConfig(level=logging.DEBUG,
+                        filename=log_file,
+                        datefmt='%Y/%m/%d %H:%M:%S',
+                        format='%(asctime)s - %(name)s - %(levelname)s - %(lineno)d - %(module)s - %(message)s')
+    logger = logging.getLogger(__name__)
 
 
     print("rank = {}, world size = {}".format(args.rank, args.world_size))
 
     rank = args.rank
     dataset = args.dataset
+    if args.rank == 0:
+        print("dataset = {}".format(dataset))
+        logger.info("dataset = {}".format(dataset))
     save_path = code_path + '/baselines/VF_CE/save/' + dataset
 
     if args.rank == 0:
@@ -112,6 +120,7 @@ def run(args):
 
     if args.rank == 0:
         print(">>> training cost {} s".format(time.time() - run_start))
+        logger.info(">>> training cost {} s".format(time.time() - run_start))
         trainer.sava_attention_weights(save_path)
 def init_processes(arg, fn):
     rank = arg.rank

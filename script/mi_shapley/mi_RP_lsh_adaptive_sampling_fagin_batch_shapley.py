@@ -12,7 +12,7 @@ import torch.distributed as dist
 from sklearn.metrics import accuracy_score, roc_auc_score
 # from data_loader.data_partition import load_dummy_partition_with_label
 from data_loader.load_data import (load_dummy_partition_with_label,choose_dataset, load_dependent_data,
-                                   load_dummy_partition_by_correlation, load_dependent_features, load_and_split_dataset)
+                                   load_and_split_random_dataset, load_dependent_features, load_and_split_dataset)
 from trainer.knn_mi_RP.mi_lsh_adaptive_sampling_fagin_batch_trainer import LSHAdaptiveFaginBatchTrainer
 from utils.helpers import seed_torch
 from typing import List, Union
@@ -103,7 +103,9 @@ def run(args):
 
     load_start = time.time()
     dataset = args.dataset
-    all_data = load_and_split_dataset(dataset)
+
+    all_data =load_and_split_random_dataset(dataset)
+    # all_data = load_and_split_dataset(dataset)
     data = all_data[rank]
     targets = all_data['labels']
     num_data = len(data)
@@ -111,8 +113,7 @@ def run(args):
     if args.rank == 0:
         print("load data part cost {} s".format(time.time() - load_start))
         print("number of data = {}".format(num_data ))
-
-
+        logger.info("dataset:{}, seed:{}".format(dataset, args.seed))
     data = random_projection(data, args.proj_size)
 
     n_test = int(num_data * args.test_ratio)
@@ -237,8 +238,14 @@ def run(args):
         print("number of train data = {}".format(len(train_data)))
         print("number of test data = {}".format(len(trainer.n_candidates)))
         print("number of candidates = {}".format(np.mean(trainer.n_candidates)))
-    if args.rank == 0:
         print("Time = {}".format(time.time() - load_start))
+        logger.info("number of train data = {}".format(len(train_data)))
+        logger.info("number of test data = {}".format(len(trainer.n_candidates)))
+        logger.info("number of candidates = {}".format(np.mean(trainer.n_candidates)))
+        logger.info("shapley value of {} clients: {}".format(len(shapley_value), shapley_value))
+        logger.info("client ranking = {}".format(shapley_ind.tolist()[::-1]))
+        logger.info("total time = {}".format(time.time() - load_start))
+
 
 
 

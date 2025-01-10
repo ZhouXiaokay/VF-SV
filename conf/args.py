@@ -37,7 +37,7 @@ def global_args_parser():
                         type=float,
                         help='learning rate')
     parser.add_argument('--seed',
-                        default=42,
+                        default=40,
                         type=int,
                         help='random seed')
     parser.add_argument('--loss_total',
@@ -78,8 +78,8 @@ def global_args_parser():
     parser.add_argument('--test_ratio', type=float, default=0.3)
     parser.add_argument('--dataset',
                         type=str,
-                        default='credit')
-    parser.add_argument('--var_tolerance', type=float, default=2e-3)
+                        default='web')
+    parser.add_argument('--var_tolerance', type=float, default=1e-4)
     parser.add_argument('--config', type=str, default='/home/zxk/codes/vfl_diversity_selection/'
                                                       'transmission/tenseal_shapley/ts_ckks_tiny.config')
     parser.add_argument('--a_server_address', type=str, default='127.0.0.1:34656')

@@ -97,16 +97,17 @@ def run(args):
                           auc))
         epoch_loss_lst.append(epoch_loss)
 
-        if epoch_idx >= start_id and len(epoch_loss_lst) > epoch_tol \
-                and min(epoch_loss_lst[:-epoch_tol]) - min(epoch_loss_lst[-epoch_tol:]) < loss_tol:
-            print("!!! train loss does not decrease > {} in {} epochs, early stop !!!"
-                  .format(loss_tol, epoch_tol))
-            break
+        # if epoch_idx >= start_id and len(epoch_loss_lst) > epoch_tol \
+        #         and min(epoch_loss_lst[:-epoch_tol]) - min(epoch_loss_lst[-epoch_tol:]) < loss_tol:
+        #     print("!!! train loss does not decrease > {} in {} epochs, early stop !!!"
+        #           .format(loss_tol, epoch_tol))
+        #     break
     # save_path = '../save/all_participate/credit/lr_rank_{0}.pth'.format(args.rank)
     # trainer.save(args.save_path)
     phi = sum(phi_list) / len(phi_list)
     phi_tensor = torch.tensor(phi).reshape(1,1)
     all_phi = sum_all_gather_tensor(phi_tensor).numpy().tolist()[0]
+    print(all_phi)
     print("client ranking = {}".format(np.argsort(all_phi)))
     print(">>> task finish, cost {:.2f} s".format(time.time() - run_start))
 

@@ -12,7 +12,6 @@ import torch.distributed as dist
 from utils.distance import square_euclidean_np
 from utils.comm_op import gather, sum_sqrt_all_reduce, sum_all_reduce
 from utils.fagin_utils import suggest_size, master_count_by_arr, master_count_fagin_group
-from transmission.tenseal_shapley.tenseal_shapley_client import ShapleyClient
 
 
 def get_utility_key(client_attendance):
@@ -40,19 +39,10 @@ class FaginBatchTrainer(object):
         self.targets = targets
         unique, counts = np.unique(self.targets, return_counts=True)
         self.label_counts = dict(zip(unique, counts))
-        self.server_addr = args.a_server_address
-        self.client = ShapleyClient(self.server_addr, args)
 
     @staticmethod
     def digamma(x):
         return math.log(x, math.e) - 0.5 / x
-
-    def transmit(self, vector, group_keys):
-        dist.barrier()
-        summed_vector = self.client.transmit(vector,group_keys=group_keys,operator='sum_batch')
-        dist.barrier()
-        # print(summed_vector)
-        return summed_vector
 
     def find_top_k(self, test_data, test_target, k, group_keys):
         start_time = time.time()
@@ -140,14 +130,18 @@ class FaginBatchTrainer(object):
         candidate_local_dist = local_dist[candidate_ind]
 
         # for each group cal its global distance
-        dist.barrier()
-        group_candidate_dist=self.transmit(candidate_local_dist, group_keys)
+        group_candidate_dist_list = []
+        for key in group_keys:
+            group_flags = utility_key_to_groups(key, self.args.world_size)
+            group_local_dist = group_flags[rank] * candidate_local_dist
+            group_dist = sum_all_reduce(group_local_dist)
+            group_candidate_dist_list.append(group_dist)
+        group_candidate_dist = np.array(group_candidate_dist_list)
 
-
-        # sort group distance
         # sort group distance
         all_groups_sorted_ids = np.argsort(group_candidate_dist, axis=1)
         all_groups_sorted_ids = np.array(candidate_ind)[all_groups_sorted_ids]
+
         client_mi_values = np.zeros(self.args.world_size)
 
         for ids in range(len(group_keys)):

@@ -17,7 +17,7 @@ seed_torch()
 import torch.distributed as dist
 from baselines.VFDV_IM.trainer.shapley_contribution_mlp_trainer import ShapleyContrMLPTrainer
 from data_loader.load_data import (load_dummy_partition_with_label,choose_dataset, load_dependent_data,
-                                   load_dummy_partition_by_correlation, load_dependent_features, load_and_split_dataset)
+                                   load_and_split_random_dataset, load_dependent_features, load_and_split_dataset)
 from torch.multiprocessing import Process
 from sklearn.metrics import accuracy_score, roc_auc_score
 from sklearn.model_selection import train_test_split
@@ -56,7 +56,8 @@ def run(args):
 
     rank = args.rank
     world_size = args.world_size
-    all_data = load_and_split_dataset(dataset)
+    # all_data = load_and_split_dataset(dataset)
+    all_data = load_and_split_random_dataset(dataset)
     data = all_data[rank]
     targets = all_data['labels']
 
