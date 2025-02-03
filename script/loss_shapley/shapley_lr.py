@@ -1,26 +1,24 @@
 import time, math
 import sys
-# code_path = '/home/zxk/codes/vfl_data_valuation'
-# sys.path.append(code_path)
+code_path = '/home/zxk/codes/vfps_mi_diversity'
+sys.path.append(code_path)
+import torch
+
 from utils.helpers import seed_torch, get_utility_key, utility_key_to_groups
+
 from conf import global_args_parser
 
 global_args = global_args_parser()
-import torch
-
+SEED = global_args.seed
 seed_torch()
-
+import argparse
 import torch.distributed as dist
-from tenseal_trainer.lr_shapley.shapley_lr_trainer import ShapleyLRTrainer
-from data_loader.load_data import load_dummy_partition_with_label, load_credit_data, load_bank_data, load_mushroom_data, \
-    load_covtype_data, load_adult_data, load_web_data, load_phishing_data
+from trainer.acc_shapley.lr_trainer import ShapleyLRTrainer
+from data_loader.load_data import load_and_split_random_dataset
 from torch.multiprocessing import Process
 from sklearn.metrics import accuracy_score, roc_auc_score
-from sklearn.model_selection import train_test_split
-
 import numpy as np
 import logging
-
 
 def dist_is_initialized():
     if dist.is_available():
@@ -31,40 +29,37 @@ def dist_is_initialized():
 
 def run(args):
     run_start = time.time()
-    # logging.basicConfig(level=logging.DEBUG,
-    #                     filename=code_path + '/logs/lr_baseline.log',
-    #                     datefmt='%Y/%m/%d %H:%M:%S',
-    #                     format='%(asctime)s - %(name)s - %(levelname)s - %(lineno)d - %(module)s - %(message)s')
-    # logger = logging.getLogger(__name__)
-    seed_torch()
 
+    num_clients = args.num_clients
     # rank 0 is master
     print("rank = {}, world size = {}, pre trained = {}".format(args.rank, args.world_size, args.load_flag))
-    # d_name = args.dataset
-    # args.save_path = code_path + '/lr_rank_{0}_seed_{1}.pth'.format(args.rank, args.seed)
-    num_clients = args.num_clients
-    client_rank = args.rank
+    log_file = code_path + '/logs/downstream/lr_acc_shapley.log'
+    logging.basicConfig(level=logging.DEBUG,
+                        filename=log_file,
+                        datefmt='%Y/%m/%d %H:%M:%S',
+                        format='%(asctime)s - %(name)s - %(levelname)s - %(lineno)d - %(module)s - %(message)s')
+    logger = logging.getLogger(__name__)
+    if args.rank == 0:
+        logger.info("dataset = {}, seed = {}, num_clients = {}, n_epochs = {}".format(
+            args.dataset, SEED, num_clients, args.n_epochs))
+    # args.save_path = args.save_path + dataset+ '/lr_rank_{0}_seed_{1}.pth'.format(args.rank, SEED)
+    rank = args.rank
+    dataset = args.dataset
+    all_data = load_and_split_random_dataset(dataset)
+    data = all_data[rank]
+    targets = all_data['labels']
+
+    num_data = len(data)
+    n_test = int(num_data * args.test_ratio)
     world_size = args.world_size
-    device = args.device
 
-    # dataset = load_credit_data()
-    # dataset = load_bank_data()
-    # dataset = load_mushroom_data()
-    # dataset = load_covtype_data()
-    # dataset = load_adult_data()
-    dataset = load_web_data()
-    # dataset = load_phishing_data()
-    data, targets = load_dummy_partition_with_label(dataset, args.num_clients, client_rank)
-    # print(data[0])
+    train_data = torch.tensor(data[n_test:],device=args.device)
+    train_targets = torch.tensor(targets[n_test:],device=args.device, dtype=torch.float32)
+    test_data = torch.tensor(data[:n_test],device=args.device)
+    test_targets = torch.tensor(targets[:n_test], dtype=torch.float32)
 
-    train_x, test_x, train_targets, test_targets = train_test_split(data, targets, train_size=0.8)
-
-    train_x = torch.from_numpy(train_x).to(device)
-    test_x = torch.from_numpy(test_x).to(device)
-    train_targets = torch.from_numpy(train_targets).to(device)
-    test_targets = torch.from_numpy(test_targets).to(device)
-    n_train = train_x.shape[0]
-    n_f = train_x.shape[1]
+    n_train = train_data.shape[0]
+    n_f = train_data.shape[1]
     args.n_f = n_f
 
     batch_size = args.batch_size
@@ -78,17 +73,8 @@ def run(args):
     end_key = int(math.pow(2, world_size)) - 1
     utility_start = time.time()
     n_utility_epochs = 0  # total used epochs
-
-    # logging
-    # if args.rank == 0:
-    #     # flag_msg = "dataset:{}, pretrained:{}, loss_total:{}, start_id:{}, seed:{}".format(d_name, args.load_flag,
-    #     #                                                                                    args.loss_total,
-    #     #                                                                                    args.start_id,
-    #     #                                                                                    args.seed)
-    #     # logger.info(flag_msg)
-
     for group_key in range(start_key, end_key + 1):
-        # seed_torch()
+        seed_torch()
         group_flags = utility_key_to_groups(group_key, world_size)
         if args.rank == 0:
             print("--- compute utility of group : {} ---".format(group_flags))
@@ -111,13 +97,13 @@ def run(args):
             for batch_idx in range(n_batches):
                 start = batch_idx * batch_size
                 end = (batch_idx + 1) * batch_size if batch_idx < n_batches - 1 else n_train
-                cur_train = train_x[start:end]
+                cur_train = train_data[start:end]
                 cur_target = train_targets[start:end].unsqueeze(dim=1)
                 batch_loss = trainer.one_iteration(cur_train, cur_target)
                 epoch_loss += batch_loss
             epoch_train_time = time.time() - epoch_start
             test_start = time.time()
-            pred_targets, pred_probs = trainer.predict(test_x)
+            pred_targets, pred_probs = trainer.predict(test_data)
 
             accuracy = accuracy_score(test_targets, pred_targets)
             auc = roc_auc_score(test_targets, np.array(pred_probs))
@@ -126,36 +112,27 @@ def run(args):
                 print(
                     ">>> epoch[{}] finish, train loss {:.6f}, cost {:.2f} s, train cost {:.2f} s, test cost {:.2f} s, "
                     "accuracy = {:.6f}, auc = {:.6f}"
-                    .format(epoch_idx, epoch_loss, time.time() - epoch_start, epoch_train_time, epoch_test_time,
-                            accuracy,
-                            auc))
+                        .format(epoch_idx, epoch_loss, time.time() - epoch_start, epoch_train_time, epoch_test_time,
+                                accuracy,
+                                auc))
             epoch_loss_lst.append(epoch_loss)
 
-            if epoch_idx >= start_id and len(epoch_loss_lst) > epoch_tol \
-                    and min(epoch_loss_lst[:-epoch_tol]) - min(epoch_loss_lst[-epoch_tol:]) < loss_tol:
-                if args.rank == 0:
-                    print("!!! train loss does not decrease > {} in {} epochs, early stop !!!"
-                          .format(loss_tol, epoch_tol))
-                break
+            # if epoch_idx >= start_id and len(epoch_loss_lst) > epoch_tol \
+            #         and min(epoch_loss_lst[:-epoch_tol]) - min(epoch_loss_lst[-epoch_tol:]) < loss_tol:
+            #     if args.rank == 0:
+            #         print("!!! train loss does not decrease > {} in {} epochs, early stop !!!"
+            #               .format(loss_tol, epoch_tol))
+            #     break
         n_utility_epochs += epoch_idx + 1
 
         utility_value[group_key] = accuracy
         n_utility_round += 1
         if args.rank == 0:
+            logger.info("compute utility of group {} cost {:.2f} s".format(group_flags, time.time() - group_start))
             print("compute utility of group {} cost {:.2f} s".format(group_flags, time.time() - group_start))
-            group_msg = "compute utility of group {} cost {:.2f} s epoch {}".format(group_flags,
-                                                                                    time.time() - group_start,
-                                                                                    epoch_idx)
-            # logger.info(group_msg)
-
     if args.rank == 0:
         print("calculate utility cost {:.2f} s, total round {}, total epochs {}"
               .format(time.time() - utility_start, n_utility_round, n_utility_epochs))
-        result_msg = "calculate utility cost {:.2f} s, total round {}, total epochs {}".format(
-            time.time() - utility_start,
-            n_utility_round,
-            n_utility_epochs)
-        # logger.info(result_msg)
 
     if args.rank == 0:
         group_acc_sum = [0 for _ in range(args.world_size)]
@@ -164,8 +141,7 @@ def run(args):
             n_participant = sum(group_flags)
             group_acc_sum[n_participant - 1] += utility_value[group_key]
             print("group {}, accuracy = {}".format(group_flags, utility_value[group_key]))
-            # logger.info("group {}, accuracy = {}".format(group_flags, utility_value[group_key]))
-
+            logger.info("group {}, accuracy = {}".format(group_flags, utility_value[group_key]))
         print("accuracy sum of different size: {}".format(group_acc_sum))
 
         # cal factorial
@@ -202,9 +178,14 @@ def run(args):
 
         shapley_ind = np.argsort(np.array(shapley_value))
         print("client ranking = {}".format(shapley_ind.tolist()[::-1]))
+        if args.rank == 0:
+            logger.info("shapley value of {} clients: {}".format(len(shapley_value), shapley_value))
+            logger.info("client ranking = {}".format(shapley_ind.tolist()[::-1]))
+            logger.info("total time = {}".format(time.time() - run_start))
+            print("total time = {}".format(time.time() - run_start))
 
-        # logger.info("shapley value of {} clients: {}".format(len(shapley_value), shapley_value))
-        # logger.info("client ranking = {}".format(shapley_ind.tolist()[::-1]))
+
+
 
 
 def init_processes(arg, fn):
@@ -212,20 +193,15 @@ def init_processes(arg, fn):
     size = arg.world_size
     """ Initialize the distributed environment. """
     dist.init_process_group(backend='gloo',
-                            init_method="tcp://127.0.0.1:13456",
+                            init_method="tcp://127.0.0.1:23456",
                             rank=rank,
                             world_size=size)
     fn(arg)
 
 
 if __name__ == "__main__":
-    # init_processes(0, 2, run)
     processes = []
-    # torch.multiprocessing.set_start_method("spawn")
     args = global_args_parser()
-    # args.dataset = 'libsvm-a8a'
-    # args.loss_total = 0.01
-    # args.seed = 2023
     for r in range(args.world_size):
         args.rank = r
         p = Process(target=init_processes, args=(args, run))
