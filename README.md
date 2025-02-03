@@ -1,6 +1,6 @@
 # VF-SV
 ## Introduction
-
+This is a repository for the paper "PS-MI: Accurate, Efficient, and Private Data Valuation in Vertical Federated Learning".
 
 ## Requirements
 ` grpcio==1.34.1`  
@@ -14,25 +14,14 @@
 
 
 ## Parameters
- The parameters are defined in the `conf/args.py` file.  
- Homomorphic encryption: transmission/tenseal_shapley/generate_ctx.py
+ The parameters are defined in the `conf/args.py` file.
 
 
 
-## Baselines
-How to run the workflow?  First，run the server, then run the client.  
-For the homomorphic encryption, the server should be run first.
-**Server:** `python /transmission/tenseal_shapley/tenseal_shapley_server.py`  
-**Client:**
-* **All Reduce**:
-  2. `python /tenseal_script/mi_shapley/mi_all_reduce_shapley.py`  
-* **VF-PS**:
-  2. `python /tenseal_script/VF-PS/mi_fagin_batch.py`
-
-**VFDV-IM:**   
-`python /baselines/VFDV-IM/script/mlp_shapley_reweight.py`  
-
-
-## Ours
-**VF-SV**:
-  1. `python /script/mi_shapley`
+## How to Run
+1. Data Preparation:
+  1. Download the dataset from: UCI, Kaggle website
+  2. Put the dataset in the `data` folder.
+  3. The tools for data preprocessing are in the `data_loader` folder.
+2. Run the scripts:
+  1. script/mi)shapley/PS-Mi.sh: Run the PS-Mi algorithm.
