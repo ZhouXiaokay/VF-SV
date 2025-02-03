@@ -1,5 +1,7 @@
 import time
 import sys
+code_path = '/home/zxk/codes/vfps_mi_diversity'
+sys.path.append(code_path)
 import math
 from conf import global_args_parser
 import numpy as np
@@ -8,15 +10,14 @@ import copy
 import torch
 import torch.distributed as dist
 from sklearn.metrics import accuracy_score, roc_auc_score
-
-# sys.path.append("../../")
 # from data_loader.data_partition import load_dummy_partition_with_label
 from data_loader.load_data import (load_dummy_partition_with_label,choose_dataset, load_dependent_data,
-                                   load_dummy_partition_by_correlation, load_dependent_features, load_and_split_dataset)
-from trainer.knn_mi_RP.mi_adaptive_sampling_fagin_batch_trainer import AdaptiveFaginBatchTrainer
+                                   load_and_split_random_dataset, load_dependent_features, load_and_split_dataset)
+from trainer.knn_mi_RP.mi_lsh_adaptive_sampling_fagin_batch_trainer import LSHAdaptiveFaginBatchTrainer
 from utils.helpers import seed_torch
-from sklearn.model_selection import train_test_split
 from typing import List, Union
+from utils.comm_op import np_all_gather
+import logging
 
 def dist_is_initialized():
     if dist.is_available():
@@ -49,20 +50,50 @@ def random_projection(data, n_size):
     :param n_size: the size of projected data
     :return: projected data
     """
-    n_data = data.shape[0]
     n_features = data.shape[1]
     random_matrix = np.random.normal(loc=0, scale=1, size=[n_features, n_size])
     random_matrix = np.random.randn(n_features, n_size)
-    # random_noise = np.random.normal(0, 10, size=[n_data, n_size])
     # project data
     projected_data = np.matmul(data,random_matrix)
     return projected_data
 
+def create_hash_table(projected_data, depth):
+    n_data = len(projected_data)
+    hash_tables = {}
+    hash_index = hash_func(projected_data)
+    for i in range(n_data):
+        for k in range(depth):
+            key = hash_index[i][k]
+            hash_tables.setdefault(key, set()).add(i)
+    return hash_tables
+
+def query_hash_table(query_data, hash_tables, num_train ,depth):
+    query_index = hash_func(query_data).ravel()
+    candidates = set()
+    for k in range(depth):
+        key = query_index[k]
+        if key not in hash_tables:
+            query_set = {i for i in range(num_train)}
+        else:
+            query_set = hash_tables[key]
+        candidates.update(query_set)
+    return list(candidates)
+
+def hash_func(projected_data):
+    hash_val = np.floor(np.abs(projected_data))
+    return hash_val
 
 
 def run(args):
     device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
     seed_torch()
+
+    logging.basicConfig(level=logging.DEBUG,
+                        filename=code_path + '/logs/VF-SV.log',
+                        datefmt='%Y/%m/%d %H:%M:%S',
+                        format='%(asctime)s - %(name)s - %(levelname)s - %(lineno)d - %(module)s - %(message)s')
+    logger = logging.getLogger(__name__)
+
     if args.rank == 0:
         print("device = {}".format(device))
 
@@ -72,26 +103,33 @@ def run(args):
 
     load_start = time.time()
     dataset = args.dataset
+
+    # all_data =load_and_split_random_dataset(dataset)
     all_data = load_and_split_dataset(dataset)
     data = all_data[rank]
     targets = all_data['labels']
+    num_data = len(data)
 
     if args.rank == 0:
         print("load data part cost {} s".format(time.time() - load_start))
-    n_data = len(data)
-    if args.rank == 0:
-        print("number of data = {}".format(n_data))
-
+        print("number of data = {}".format(num_data ))
+        logger.info("dataset:{}, seed:{}, projection size:{}".format(dataset, args.seed, args.proj_size))
     data = random_projection(data, args.proj_size)
-    num_data = len(data)
+
     n_test = int(num_data * args.test_ratio)
+    n_train = num_data - n_test
     # n_test = 10
     train_data = data[n_test:]
     train_targets = targets[n_test:]
     test_data = data[:n_test]
     test_targets = targets[:n_test]
-    if args.rank == 0:
-        print("number of test data = {}".format(n_test))
+    depth = 5
+    all_train_data = np_all_gather(train_data)
+    all_test_data = np_all_gather(test_data)
+    hash_table = create_hash_table(all_train_data, depth)
+
+
+
     # train_data, test_data, train_targets, test_targets = train_test_split(data, targets,
     #                                                                       test_size=args.test_ratio,
     #                                                                       random_state=args.seed)
@@ -100,7 +138,7 @@ def run(args):
     utility_value = dict()
     n_utility_round = 0
 
-    trainer = AdaptiveFaginBatchTrainer(args, train_data, train_targets)
+    trainer = LSHAdaptiveFaginBatchTrainer(args, train_data, train_targets)
 
     # cal utility of all group_keys, group key = 1-(2^k-1)
     start_key = 1
@@ -116,11 +154,14 @@ def run(args):
         one_test_start = time.time()
         cur_test_data = test_data[i]
         cur_test_target = test_targets[i]
-        cur_mi_values = trainer.find_top_k(cur_test_data, cur_test_target, args.k, adaptive_keys)
+        lsh_candidates = query_hash_table(all_test_data[i], hash_table, n_train ,depth=1)
+        if rank == 0:
+            print(len(lsh_candidates))
+        cur_mi_values = trainer.find_top_k(cur_test_data, cur_test_target, args.k, lsh_candidates ,adaptive_keys)
         for key in adaptive_keys:
             all_mi_values_dict[key].append(cur_mi_values[key])
             mi_groups_dict[key].append(np.mean(all_mi_values_dict[key]))
-        if i>n_test*0.1 and i%100==0:
+        if i>n_test*1.1 and i%100==0:
             for key in adaptive_keys:
                 var_key = np.var(mi_groups_dict[key])
                 if rank == 0:
@@ -197,8 +238,14 @@ def run(args):
         print("number of train data = {}".format(len(train_data)))
         print("number of test data = {}".format(len(trainer.n_candidates)))
         print("number of candidates = {}".format(np.mean(trainer.n_candidates)))
-    if args.rank == 0:
         print("Time = {}".format(time.time() - load_start))
+        logger.info("number of train data = {}".format(len(train_data)))
+        logger.info("number of test data = {}".format(len(trainer.n_candidates)))
+        logger.info("number of candidates = {}".format(np.mean(trainer.n_candidates)))
+        logger.info("shapley value of {} clients: {}".format(len(shapley_value), shapley_value))
+        logger.info("client ranking = {}".format(shapley_ind.tolist()[::-1]))
+        logger.info("total time = {}".format(time.time() - load_start))
+
 
 
 
