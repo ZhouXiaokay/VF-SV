@@ -1,4 +1,4 @@
-# VF-SV
+# PS-MI
 ## Introduction
 This is a repository for the paper "PS-MI: Accurate, Efficient, and Private Data Valuation in Vertical Federated Learning".
 
