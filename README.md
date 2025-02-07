@@ -20,8 +20,8 @@ This is a repository for the paper "PS-MI: Accurate, Efficient, and Private Data
 
 ## How to Run
 1. Data Preparation:
-  1. Download the dataset from: UCI, Kaggle website
-  2. Put the dataset in the `data` folder.
-  3. The tools for data preprocessing are in the `data_loader` folder.
+  * Download the dataset from: UCI, Kaggle website
+  * Put the dataset in the `data` folder.
+  * The tools for data preprocessing are in the `data_loader` folder.
 2. Run the scripts:
-  1. script/mi)shapley/PS-Mi.sh: Run the PS-Mi algorithm.
+  * script/mi)shapley/PS-Mi.sh: Run the PS-Mi algorithm.
